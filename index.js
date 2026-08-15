@@ -504,7 +504,9 @@ builder.defineStreamHandler(async ({ type, id }) => {
     }
 
     const streams = [];
-    for (const mode of ["sub", "dub"]) {
+    // DUB first (highest quality on top), then SUB — dub entries sit at the
+    // top of Stremio's list, subs at the bottom.
+    for (const mode of ["dub", "sub"]) {
       try {
         const embed = await getEmbedUrl(episodeId, mode);
         if (!embed) continue;
@@ -512,16 +514,17 @@ builder.defineStreamHandler(async ({ type, id }) => {
         if (!master) continue;
 
         const variants = await parseMasterVariants(master);
-        // Offer the adaptive master FIRST (most robust default), then the
-        // individual quality variants for manual selection.
-        streams.push(
-          makeStream({ url: master, quality: variants.length ? "auto" : "HLS", animeTitle: anime.title, episode, mode })
-        );
+        // Highest resolution first (1080p → 720p → 360p) so the top pick is
+        // the best-quality stream; the adaptive master goes last in the group.
+        variants.sort((a, b) => (parseInt(b.quality, 10) || 0) - (parseInt(a.quality, 10) || 0));
         for (const v of variants) {
           streams.push(
             makeStream({ url: v.url, quality: v.quality, animeTitle: anime.title, episode, mode })
           );
         }
+        streams.push(
+          makeStream({ url: master, quality: variants.length ? "auto" : "HLS", animeTitle: anime.title, episode, mode })
+        );
       } catch (e) {
         if (e instanceof CloudflareError) {
           console.error(`[stream] Cloudflare blocked (${mode}). See ANIDB_CURL / curl-impersonate note.`);
