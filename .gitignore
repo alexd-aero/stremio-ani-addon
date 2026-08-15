@@ -6,3 +6,6 @@ server.log
 # paths for the folder you cloned into — must NOT be committed).
 run-forever.cmd
 start-hidden.vbs
+
+# Personal publish helper (reads your local PAT path) — keep it out of the repo.
+publish-to-github.sh
