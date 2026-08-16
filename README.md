@@ -12,7 +12,24 @@ Kitsu/IMDb ID ──▶ title ──▶ anidb slug ──▶ episode id ──�
                                                      Stremio ◀── raw HLS stream
 ```
 
-## Quick start (any Windows 10/11 PC)
+## Install (one command) — Windows
+
+Open **PowerShell** and paste:
+
+```powershell
+irm https://raw.githubusercontent.com/alexd-aero/stremio-ani-addon/main/install.ps1 | iex
+```
+
+That installs Node.js if needed, downloads the add-on, sets it to **auto-start at
+login** (hidden, self-restarting), and registers it in Stremio. When Stremio pops
+up, click **Install**, open any anime, and pick an **Ani-CLI** stream.
+
+Everything runs **on your own PC** — your connection does the scraping, nothing is
+shared with or routed through anyone else. Each person installs it the same way.
+
+> Uninstall anytime: run `uninstall-autostart.ps1` from `%LOCALAPPDATA%\stremio-ani-addon`.
+
+## Manual start (if you prefer)
 
 1. Install **[Node.js](https://nodejs.org)** (LTS) and the **[Stremio](https://www.stremio.com)** desktop app. Nothing else — Windows already ships the `curl` this needs.
 2. Download this folder, open a terminal in it, and run:
@@ -20,17 +37,10 @@ Kitsu/IMDb ID ──▶ title ──▶ anidb slug ──▶ episode id ──�
    npm install
    npm start
    ```
-3. In Stremio, install the **Anime Kitsu** add-on (so items carry IDs), then paste this into Stremio's add-on search bar:
-   ```
-   http://127.0.0.1:7000/manifest.json
-   ```
+3. Paste `http://127.0.0.1:7000/manifest.json` into Stremio's add-on search bar. (Optionally install **Anime Kitsu** for a dedicated anime catalog; the default IMDb catalog works too.)
 4. Open any anime, pick an episode → the **Ani-CLI** `SUB`/`DUB` streams appear.
 
-To make it **start automatically at every login** (hidden, self-restarting) so you never touch a terminal again:
-```bash
-powershell -ExecutionPolicy Bypass -File .\setup-autostart.ps1
-```
-(Undo with `uninstall-autostart.ps1`.)
+Auto-start at every login: `powershell -ExecutionPolicy Bypass -File .\setup-autostart.ps1` (undo with `uninstall-autostart.ps1`).
 
 ---
 
