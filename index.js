@@ -50,6 +50,14 @@ const LANGUAGES_API = (epId) => `${BASE}/api/frontend/episode/${epId}/languages`
 //   e.g.  ANIDB_CURL="C:\\tools\\curl-impersonate\\curl_chrome116.exe"
 const ANIDB_CURL = process.env.ANIDB_CURL || "";
 
+// FlareSolverr endpoint — the serverless-friendly Cloudflare bypass.  When set,
+// anidb requests are proxied through a FlareSolverr instance (headless Chromium
+// that solves the challenge) instead of a local curl.  This is what lets the
+// add-on run somewhere with no `curl`/subprocess (Wasmer, Vercel, a container).
+//   e.g.  FLARESOLVERR_URL="http://your-host:8191"
+// Run one with:  docker run -d -p 8191:8191 ghcr.io/flaresolverr/flaresolverr
+const FLARESOLVERR_URL = (process.env.FLARESOLVERR_URL || "").replace(/\/+$/, "");
+
 // A browser-ish TLS cipher order (ani-cli's cipher_flag equivalent).  This
 // nudges lighter Cloudflare checks; it cannot defeat a full JS challenge —
 // that's what ANIDB_CURL / curl-impersonate is for.
@@ -136,12 +144,50 @@ function curlWorks(bin) {
 }
 
 // Pick a working curl ONCE at startup (this makes a couple of probe requests).
+// Skipped when FlareSolverr is configured — a serverless host has no curl and
+// the spawn probe would just waste time / error.
 let SYSTEM_CURL = null;
-(function detectCurl() {
-  for (const c of curlCandidates()) {
-    if (curlWorks(c)) { SYSTEM_CURL = c; break; }
+if (!FLARESOLVERR_URL) {
+  (function detectCurl() {
+    for (const c of curlCandidates()) {
+      if (curlWorks(c)) { SYSTEM_CURL = c; break; }
+    }
+  })();
+}
+
+/**
+ * Fetch a URL through a FlareSolverr instance (headless-Chromium Cloudflare
+ * solver).  Returns the response body as text.  FlareSolverr renders the page
+ * in Chromium, so JSON endpoints come back wrapped in <html>…<pre>JSON</pre>;
+ * we unwrap those back to raw JSON while leaving real HTML pages untouched.
+ */
+async function flaresolverrFetch(url) {
+  const { data } = await axios.post(
+    `${FLARESOLVERR_URL}/v1`,
+    { cmd: "request.get", url, maxTimeout: 60000 },
+    { timeout: 75000, headers: { "Content-Type": "application/json" } }
+  );
+  if (data.status !== "ok" || !data.solution)
+    throw new Error(`FlareSolverr: ${data.message || "request failed"}`);
+  const raw = data.solution.response || "";
+  if (looksBlocked(raw)) throw new CloudflareError("FlareSolverr could not clear Cloudflare");
+  return unwrapFlareBody(raw);
+}
+
+/** Turn a Chromium-rendered JSON response back into raw JSON; pass HTML through. */
+function unwrapFlareBody(body) {
+  const t = body.trim();
+  if (t.startsWith("{") || t.startsWith("[")) return t; // already raw JSON
+  const pre = body.match(/<pre[^>]*>([\s\S]*?)<\/pre>/i);
+  if (pre) {
+    const inner = pre[1]
+      .replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"').replace(/&#0?39;/g, "'").replace(/&amp;/g, "&")
+      .trim();
+    if (inner.startsWith("{") || inner.startsWith("[")) return inner;
   }
-})();
+  return body; // a real HTML page (e.g. the search results) — leave as-is
+}
 
 /** Fetch via an external curl(-impersonate) binary — mirrors ani-cli's anidb_curl. */
 function curlFetch(bin, url) {
@@ -162,10 +208,20 @@ function curlFetch(bin, url) {
 }
 
 /**
- * Core fetch helper.  Prefers the probed-working curl (curl reliably clears
- * Cloudflare here); falls back to Node/axios only if no working curl was found.
+ * Core fetch helper.  Backend priority:
+ *   1. FlareSolverr, if configured  (serverless / no-curl Cloudflare bypass)
+ *   2. a probed-working local curl   (reliable on a normal machine)
+ *   3. Node/axios                     (last resort; usually Cloudflare-blocked)
  */
 async function anidbCurl(url) {
+  if (FLARESOLVERR_URL) {
+    try {
+      return await flaresolverrFetch(url);
+    } catch (e) {
+      // On a serverless host there's no curl to fall back to — surface it.
+      if (!SYSTEM_CURL) throw e;
+    }
+  }
   if (SYSTEM_CURL) {
     try {
       return await curlFetch(SYSTEM_CURL, url);
@@ -576,6 +632,7 @@ console.log("=".repeat(64));
 console.log(" Ani-CLI Local Streams add-on is running.");
 console.log(` Manifest:  http://127.0.0.1:${PORT}/manifest.json`);
 console.log(` Install :  stremio://127.0.0.1:${PORT}/manifest.json`);
-if (SYSTEM_CURL) console.log(` anidb fetch via curl: ${SYSTEM_CURL}  (probed, clears Cloudflare)`);
-else console.log(" anidb fetch via: Node/axios (no working curl found — may hit Cloudflare; install curl-impersonate)");
+if (FLARESOLVERR_URL) console.log(` anidb fetch via FlareSolverr: ${FLARESOLVERR_URL}`);
+else if (SYSTEM_CURL) console.log(` anidb fetch via curl: ${SYSTEM_CURL}  (probed, clears Cloudflare)`);
+else console.log(" anidb fetch via: Node/axios (no curl found — may hit Cloudflare; set FLARESOLVERR_URL or install curl-impersonate)");
 console.log("=".repeat(64));

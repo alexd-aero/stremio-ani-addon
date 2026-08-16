@@ -1,0 +1,17 @@
+node_modules
+npm-debug.log
+server.log
+*.log
+.git
+.gitignore
+README.md
+run-forever.cmd
+start-hidden.vbs
+stop-addon.cmd
+stop-addon.ps1
+setup-autostart.ps1
+uninstall-autostart.ps1
+publish-to-github.sh
+install.js
+Dockerfile
+docker-compose.yml

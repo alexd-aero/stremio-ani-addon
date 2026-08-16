@@ -1,0 +1,27 @@
+# One-command hosted deploy: the add-on + a FlareSolverr instance together.
+#
+#     docker compose up -d
+#
+# Then install  http://<this-host>:7000/manifest.json  in Stremio.
+# The add-on reaches FlareSolverr over the internal compose network, so the
+# solver isn't exposed publicly.
+services:
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    container_name: flaresolverr
+    environment:
+      - LOG_LEVEL=info
+      - TZ=UTC
+    restart: unless-stopped
+
+  addon:
+    build: .
+    container_name: stremio-ani-addon
+    environment:
+      - PORT=7000
+      - FLARESOLVERR_URL=http://flaresolverr:8191
+    ports:
+      - "7000:7000"
+    depends_on:
+      - flaresolverr
+    restart: unless-stopped

@@ -165,8 +165,38 @@ log prints `Using external curl: …`.
 
 | Variable | Default | Meaning |
 |----------|---------|---------|
-| `PORT` | `7000` | Local server port |
-| `ANIDB_CURL` | *(unset)* | Path to a `curl-impersonate` binary; when set, all scraping requests go through it (Cloudflare bypass) |
+| `PORT` | `7000` | Server port |
+| `FLARESOLVERR_URL` | *(unset)* | Base URL of a [FlareSolverr](https://github.com/FlareSolverr/FlareSolverr) instance (e.g. `http://host:8191`). When set, all anidb requests are solved through it — this is how the add-on runs **hosted/serverless** where no `curl` is available. |
+| `ANIDB_CURL` | *(unset)* | Path to a `curl(-impersonate)` binary; forces all scraping requests through it. |
+
+**Fetch-backend priority:** `FLARESOLVERR_URL` → probed system `curl` → Node/axios.
+
+---
+
+## Hosted / serverless deploy (anidb + FlareSolverr)
+
+On a normal PC the add-on uses the built-in `curl` to clear Cloudflare. On a
+**datacenter/serverless** host that trick fails (no `curl`, and datacenter IPs
+get challenged harder), so it routes anidb through **FlareSolverr** — a headless
+Chromium that solves the challenge. FlareSolverr itself needs a real browser, so
+it can't be *serverless*; it runs as a companion container.
+
+The video stream URLs (`hls.anidb.app`) are **not** behind Cloudflare, so only
+the lightweight scraping calls go through FlareSolverr — the heavy video traffic
+goes straight from anidb to each viewer.
+
+**One-command deploy** (any Docker host — VPS, Fly.io, Railway, Render…):
+```bash
+docker compose up -d
+```
+That starts the add-on + FlareSolverr together; then install
+`http://<your-host>:7000/manifest.json` in Stremio. For a public URL, put it
+behind HTTPS (Caddy/Cloudflare Tunnel) — Stremio requires HTTPS for remote add-ons.
+
+**Wasmer / other serverless:** deploy the add-on (this container / `index.js`)
+to your serverless runtime and set `FLARESOLVERR_URL` to a FlareSolverr instance
+running on a small always-on box (its Chromium can't live on serverless). The
+`docker compose` file above is the simplest way to host that FlareSolverr.
 
 Example on a custom port:
 ```powershell
